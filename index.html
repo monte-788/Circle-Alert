@@ -1,0 +1,360 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Circle Alert</title>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.js"></script>
+<style>
+:root{--bg:#f3f5f8;--card:#fff;--ink:#14213d;--mute:#5d6b82;--line:#d9dfe8;--red:#e5261f;--redd:#b51510;--ok:#0f8a6a}
+@media (prefers-color-scheme:dark){:root{--bg:#0e1524;--card:#17213a;--ink:#eef2f9;--mute:#9aa8c2;--line:#2a3756}}
+*{box-sizing:border-box}
+html,body{margin:0;min-height:100%;background:var(--bg);color:var(--ink);font:16px/1.45 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
+body{padding:env(safe-area-inset-top) 0 env(safe-area-inset-bottom)}
+main{max-width:480px;margin:0 auto;padding:20px 16px 40px}
+h1{font-size:26px;margin:8px 0 4px;letter-spacing:-.5px}
+h2{font-size:18px;margin:0 0 10px}
+p.sub{color:var(--mute);margin:0 0 20px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:16px;margin-bottom:14px}
+label{display:block;font-size:14px;color:var(--mute);margin:10px 0 4px}
+input,select,textarea{width:100%;padding:12px;border-radius:10px;border:1px solid var(--line);background:var(--bg);color:var(--ink);font:inherit}
+input.code{font-size:22px;letter-spacing:6px;text-align:center;text-transform:uppercase;font-weight:700}
+button{font:inherit;font-weight:600;border:0;border-radius:10px;padding:12px 16px;cursor:pointer;background:var(--ink);color:var(--bg);width:100%;margin-top:12px}
+button.ghost{background:transparent;color:var(--ink);border:1px solid var(--line)}
+button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-visible{outline:3px solid #3b82f6;outline-offset:2px}
+.codebox{display:flex;align-items:center;justify-content:space-between;gap:10px;background:var(--bg);border:1px dashed var(--mute);border-radius:12px;padding:12px 14px}
+.codebox b{font-size:30px;letter-spacing:7px}
+.codebox button{width:auto;margin:0;padding:8px 12px}
+#sos{width:100%;aspect-ratio:1.6;max-height:180px;border-radius:20px;background:var(--red);color:#fff;font-size:34px;font-weight:800;letter-spacing:1px;box-shadow:0 8px 0 var(--redd);margin:6px 0 16px;transition:transform .08s,box-shadow .08s}
+#sos:active{transform:translateY(6px);box-shadow:0 2px 0 var(--redd)}
+ul{list-style:none;margin:0;padding:0}
+li{display:flex;justify-content:space-between;padding:9px 0;border-bottom:1px solid var(--line)}
+li:last-child{border:0}
+li small{color:var(--mute)}
+.me{color:var(--ok);font-weight:600}
+.tabs{display:flex;gap:8px;margin-bottom:12px}
+.tabs button{margin:0;background:transparent;color:var(--ink);border:1px solid var(--line)}
+.tabs button.on{background:var(--ink);color:var(--bg)}
+.hidden{display:none!important}
+#overlay{position:fixed;inset:0;background:var(--red);color:#fff;z-index:99;display:flex;flex-direction:column;justify-content:center;align-items:center;text-align:center;padding:24px;animation:flash 1s steps(2) infinite}
+@keyframes flash{50%{background:var(--redd)}}
+@media (prefers-reduced-motion:reduce){#overlay{animation:none}}
+#overlay h1{font-size:40px}
+#overlay p{font-size:20px;max-width:420px}
+#overlay button{background:#fff;color:var(--redd);max-width:320px;font-size:20px;padding:16px}
+.note{font-size:13px;color:var(--mute);margin-top:10px}
+</style>
+</head>
+<body>
+<main>
+  <h1>Circle Alert</h1>
+  <p class="sub">Private groups that alert everyone at once.</p>
+
+  <!-- Setup screen -->
+  <section id="setup">
+    <div class="card">
+      <label for="name">Your name</label>
+      <input id="name" maxlength="24" placeholder="e.g. Sam" autocomplete="given-name">
+    </div>
+    <div class="tabs">
+      <button id="tCreate" class="on">Create group</button>
+      <button id="tJoin">Join group</button>
+    </div>
+    <div id="pCreate" class="card">
+      <label for="gname">Group name</label>
+      <input id="gname" maxlength="30" placeholder="e.g. Family">
+      <button id="bCreate">Create group</button>
+    </div>
+    <div id="pJoin" class="card hidden">
+      <label for="jcode">Group code</label>
+      <input id="jcode" class="code" maxlength="6" placeholder="ABC123" autocapitalize="characters">
+      <button id="bJoin">Join group</button>
+    </div>
+    <p id="err" class="note" role="alert" style="color:var(--red)"></p>
+  </section>
+
+  <!-- Group screen -->
+  <section id="group" class="hidden">
+    <div class="card">
+      <h2 id="gtitle"></h2>
+      <div class="codebox"><b id="gcode"></b><button class="ghost" id="copy">Copy</button></div>
+      <p class="note">Share this code so others can join.</p>
+    </div>
+
+    <button id="sos">SEND ALERT</button>
+
+    <div class="card">
+      <label for="type">Type</label>
+      <select id="type">
+        <option>Emergency</option><option>Medical</option><option>Fire</option><option>Danger nearby</option><option>Need help</option>
+      </select>
+      <label for="msg">Message (optional)</label>
+      <input id="msg" maxlength="120" placeholder="Where are you? What happened?">
+    </div>
+
+    <div class="card"><h2>Members</h2><ul id="members"></ul></div>
+    <div class="card"><h2>Recent alerts</h2><ul id="log"></ul></div>
+
+    <button class="ghost" id="test">Test alert sound</button>
+    <button class="ghost" id="leave">Leave group</button>
+    <p class="note" id="status"></p>
+  </section>
+</main>
+
+<div id="overlay" class="hidden" role="alertdialog" aria-live="assertive">
+  <h1 id="oTitle">EMERGENCY</h1>
+  <p id="oBody"></p>
+  <button id="oStop">I got it, stop sound</button>
+</div>
+
+<script>
+/* ============================================================
+   BACKEND  (Supabase = works worldwide; Local = one-device demo)
+   Paste your Supabase project URL + anon key. See supabase-setup.md.
+   ============================================================ */
+const SUPABASE_URL = "https://zomnjlmnzzelbtrbbtaf.supabase.co";        // e.g. https://abcdxyz.supabase.co
+const SUPABASE_ANON_KEY = "sb_publishable_05Expy-HinzSih8YjkKdBA_Sp-raj4j";   // the public "anon" key (safe to ship)
+const mkCode = () => { const c='ABCDEFGHJKLMNPQRSTUVWXYZ23456789'; let s=''; const r=crypto.getRandomValues(new Uint32Array(6)); for(let i=0;i<6;i++) s+=c[r[i]%c.length]; return s; };
+
+const SupabaseBackend = () => {
+  const sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+  let ready = null;
+  const signedIn = () => ready || (ready = sb.auth.getSession().then(async ({data}) => {
+    if (!data.session) { const {error} = await sb.auth.signInAnonymously(); if (error) throw error; }
+  }));
+  const toAlert = r => ({id:r.id, from:r.from_id, fromName:r.from_name, type:r.type, msg:r.msg, ts:Number(r.ts)});
+  return {
+    mode: 'online',
+    async createGroup(name, member){
+      await signedIn();
+      for (let i = 0; i < 5; i++) {
+        const code = mkCode();
+        const {error} = await sb.rpc('create_group', {p_code:code, p_name:name, p_member_id:member.id, p_member_name:member.name});
+        if (!error) return code;
+        if (error.code !== '23505') throw new Error(error.message);   // 23505 = code already taken, retry
+      }
+      throw new Error('Could not create a group. Try again.');
+    },
+    async joinGroup(code, member){
+      await signedIn();
+      const {data, error} = await sb.rpc('join_group', {p_code:code, p_member_id:member.id, p_member_name:member.name});
+      if (error) throw new Error(error.message.includes('not_found') ? 'No group with that code.' : error.message);
+      return {name:data};
+    },
+    async sendAlert(code, a){
+      await signedIn();
+      const {error} = await sb.from('alerts').insert({id:a.id, code, from_id:a.from, from_name:a.fromName, type:a.type, msg:a.msg, ts:a.ts});
+      if (error) throw new Error(error.message);
+    },
+    async setToken(code, id, token){ await signedIn(); await sb.from('members').update({token}).eq('id', id); },
+    async leave(code, id){ await signedIn(); await sb.from('members').delete().eq('id', id); },
+    subscribe(code, cb){
+      let dead = false, chan = null;
+      const load = async () => {
+        const [g, m, al] = await Promise.all([
+          sb.from('groups').select('name').eq('code', code).maybeSingle(),
+          sb.from('members').select('id,name').eq('code', code),
+          sb.from('alerts').select('*').eq('code', code).order('ts', {ascending:false}).limit(30)
+        ]);
+        if (dead || !g.data) return;
+        cb({name:g.data.name, members:m.data || [], alerts:(al.data || []).map(toAlert)});
+      };
+      signedIn().then(() => {
+        if (dead) return; load();
+        chan = sb.channel('g-' + code)
+          .on('postgres_changes', {event:'*', schema:'public', table:'alerts',  filter:'code=eq.' + code}, load)
+          .on('postgres_changes', {event:'*', schema:'public', table:'members', filter:'code=eq.' + code}, load)
+          .subscribe();
+      });
+      const poll = setInterval(load, 15000);   // safety net if the socket drops
+      const onVis = () => { if (document.visibilityState === 'visible') load(); };
+      document.addEventListener('visibilitychange', onVis);
+      return () => { dead = true; clearInterval(poll); document.removeEventListener('visibilitychange', onVis); if (chan) sb.removeChannel(chan); };
+    }
+  };
+};
+
+const LocalBackend = () => {
+  const KEY = 'circle_db_v1';
+  const read = () => { try { return JSON.parse(localStorage.getItem(KEY)) || {groups:{}}; } catch { return {groups:{}}; } };
+  const write = d => { try { localStorage.setItem(KEY, JSON.stringify(d)); } catch {} };
+  return {
+    mode: 'demo',
+    async createGroup(name, member){ const d=read(); let code; do { code=mkCode(); } while (d.groups[code]); d.groups[code]={name,members:[member],alerts:[]}; write(d); return code; },
+    async joinGroup(code, member){ const d=read(), g=d.groups[code]; if(!g) throw new Error('No group with that code.'); if(!g.members.some(m=>m.id===member.id)) g.members.push(member); write(d); return g; },
+    async sendAlert(code, a){ const d=read(), g=d.groups[code]; if(!g) throw new Error('Group not found.'); g.alerts.unshift(a); g.alerts=g.alerts.slice(0,30); write(d); },
+    async setToken(){}, async leave(){},
+    subscribe(code, cb){
+      const push = () => { const g = read().groups[code]; if (g) cb(g); };
+      const on = e => { if (e.key===KEY) push(); };
+      window.addEventListener('storage', on); const t = setInterval(push, 3000); push();
+      return () => { window.removeEventListener('storage', on); clearInterval(t); };
+    }
+  };
+};
+const Backend = (SUPABASE_URL && SUPABASE_ANON_KEY && window.supabase) ? SupabaseBackend() : LocalBackend();
+
+/* ============================================================
+   APP
+   ============================================================ */
+const $ = id => document.getElementById(id);
+const store = {
+  get(k, d){ try { const v = localStorage.getItem(k); return v ? JSON.parse(v) : d; } catch { return d; } },
+  set(k, v){ try { localStorage.setItem(k, JSON.stringify(v)); } catch {} }
+};
+let me = store.get('circle_me', null);      // {id, name, code}
+let seen = new Set(store.get('circle_seen', []));
+let unsub = null, firstLoad = true;
+
+const esc = s => String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const uid = () => Math.random().toString(36).slice(2) + Date.now().toString(36);
+
+/* ---------- Sound: beep beep, repeating ---------- */
+let ctx = null, beepTimer = null, wakeLock = null;
+function unlockAudio(){
+  try {
+    ctx = ctx || new (window.AudioContext || window.webkitAudioContext)();
+    if (ctx.state === 'suspended') ctx.resume();
+  } catch {}
+}
+function beep(at, dur){
+  const o = ctx.createOscillator(), g = ctx.createGain();
+  o.type = 'square'; o.frequency.value = 1000;
+  g.gain.setValueAtTime(0.0001, at);
+  g.gain.exponentialRampToValueAtTime(0.6, at + 0.01);
+  g.gain.setValueAtTime(0.6, at + dur - 0.02);
+  g.gain.exponentialRampToValueAtTime(0.0001, at + dur);
+  o.connect(g); g.connect(ctx.destination); o.start(at); o.stop(at + dur + 0.02);
+}
+function beepBeep(){
+  if (!ctx) return; const t = ctx.currentTime;
+  beep(t, 0.18); beep(t + 0.3, 0.18);          // beep ... beep
+  if (navigator.vibrate) navigator.vibrate([200, 100, 200]);
+}
+function startAlarm(){
+  stopAlarm(); unlockAudio(); beepBeep();
+  beepTimer = setInterval(beepBeep, 1200);
+}
+function stopAlarm(){ clearInterval(beepTimer); beepTimer = null; if (navigator.vibrate) navigator.vibrate(0); }
+
+/* ---------- Notifications ---------- */
+async function askNotify(){
+  if (!('Notification' in window)) return;
+  if (Notification.permission === 'default') { try { await Notification.requestPermission(); } catch {} }
+}
+async function systemNotify(title, body){
+  if (!('Notification' in window) || Notification.permission !== 'granted') return;
+  const opts = {body, tag:'circle-alert', renotify:true, requireInteraction:true, vibrate:[200,100,200,100,200]};
+  try {
+    const reg = navigator.serviceWorker && await navigator.serviceWorker.getRegistration();
+    if (reg) return reg.showNotification(title, opts);
+    new Notification(title, opts);
+  } catch {}
+}
+async function keepAwake(){
+  try { if ('wakeLock' in navigator && !wakeLock) { wakeLock = await navigator.wakeLock.request('screen'); wakeLock.addEventListener('release', () => wakeLock = null); } } catch {}
+}
+document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible' && me) keepAwake(); });
+
+/* ---------- Alerts ---------- */
+function showAlert(a){
+  $('oTitle').textContent = a.type.toUpperCase() + ' from ' + a.fromName;
+  $('oBody').textContent = a.msg || 'Tap to confirm you have seen this.';
+  $('overlay').classList.remove('hidden');
+  startAlarm();
+  systemNotify(a.type + ' – ' + a.fromName, a.msg || 'Open the app now.');
+}
+$('oStop').onclick = () => { stopAlarm(); $('overlay').classList.add('hidden'); };
+
+function render(g){
+  $('gtitle').textContent = g.name;
+  $('members').innerHTML = g.members.map(m =>
+    `<li><span>${esc(m.name)}</span>${m.id===me.id?'<span class="me">you</span>':''}</li>`).join('');
+  $('log').innerHTML = g.alerts.length ? g.alerts.slice(0,8).map(a =>
+    `<li><span><b>${esc(a.type)}</b> · ${esc(a.fromName)}<br><small>${esc(a.msg||'')}</small></span><small>${new Date(a.ts).toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'})}</small></li>`).join('')
+    : '<li><small>No alerts yet.</small></li>';
+
+  for (const a of [...g.alerts].reverse()) {
+    if (seen.has(a.id)) continue;
+    seen.add(a.id);
+    // Only ring for alerts from others, and not for old history on first load (older than 10 min)
+    const fresh = Date.now() - a.ts < 10 * 60 * 1000;
+    if (a.from !== me.id && fresh) showAlert(a);
+  }
+  store.set('circle_seen', [...seen].slice(-200));
+  firstLoad = false;
+}
+
+/* ---------- Native push (works once wrapped as an APK with Capacitor) ---------- */
+async function registerPush(){
+  const P = window.Capacitor && Capacitor.Plugins && Capacitor.Plugins.PushNotifications;
+  if (!P) return;
+  try {
+    const perm = await P.requestPermissions(); if (perm.receive !== 'granted') return;
+    P.addListener('registration', t => Backend.setToken(me.code, me.id, t.value));
+    if (P.createChannel) await P.createChannel({id:'alerts', name:'Emergency alerts', importance:5, sound:'beep', vibration:true, visibility:1});
+    await P.register();
+  } catch {}
+}
+
+/* ---------- Screens ---------- */
+function enterGroup(){
+  $('setup').classList.add('hidden'); $('group').classList.remove('hidden');
+  $('gcode').textContent = me.code;
+  if (unsub) unsub();
+  unsub = Backend.subscribe(me.code, render);
+  keepAwake();
+  if ('serviceWorker' in navigator) { try { navigator.serviceWorker.register('sw.js').catch(()=>{}); } catch {} }
+  registerPush();
+  $('status').textContent = Backend.mode === 'online'
+    ? 'Online: alerts reach every member, anywhere.'
+    : 'Demo mode: add your Supabase keys to alert other phones.';
+}
+function leave(){
+  if (unsub) unsub(); unsub = null; stopAlarm();
+  if (me) Backend.leave(me.code, me.id).catch(()=>{});
+  me = null; try { localStorage.removeItem('circle_me'); } catch {}
+  $('group').classList.add('hidden'); $('setup').classList.remove('hidden');
+}
+const fail = m => $('err').textContent = m;
+
+$('tCreate').onclick = () => { $('tCreate').classList.add('on'); $('tJoin').classList.remove('on'); $('pCreate').classList.remove('hidden'); $('pJoin').classList.add('hidden'); };
+$('tJoin').onclick = () => { $('tJoin').classList.add('on'); $('tCreate').classList.remove('on'); $('pJoin').classList.remove('hidden'); $('pCreate').classList.add('hidden'); };
+
+$('bCreate').onclick = async () => {
+  fail(''); unlockAudio(); askNotify();
+  const name = $('name').value.trim(), gname = $('gname').value.trim();
+  if (!name) return fail('Enter your name first.');
+  if (!gname) return fail('Give the group a name.');
+  const member = {id: uid(), name};
+  try {
+    const code = await Backend.createGroup(gname, member);
+    me = {id: member.id, name, code}; store.set('circle_me', me); enterGroup();
+  } catch (e) { fail(e.message); }
+};
+$('bJoin').onclick = async () => {
+  fail(''); unlockAudio(); askNotify();
+  const name = $('name').value.trim(), code = $('jcode').value.trim().toUpperCase();
+  if (!name) return fail('Enter your name first.');
+  if (code.length !== 6) return fail('The code has 6 characters.');
+  const member = {id: uid(), name};
+  try {
+    await Backend.joinGroup(code, member);
+    me = {id: member.id, name, code}; store.set('circle_me', me); enterGroup();
+  } catch (e) { fail(e.message); }
+};
+$('sos').onclick = async () => {
+  unlockAudio();
+  if (!confirm('Send this alert to everyone in the group?')) return;
+  const a = {id: uid(), from: me.id, fromName: me.name, type: $('type').value, msg: $('msg').value.trim(), ts: Date.now()};
+  try { await Backend.sendAlert(me.code, a); $('msg').value = ''; $('status').textContent = 'Alert sent.'; }
+  catch (e) { $('status').textContent = e.message; }
+};
+$('copy').onclick = async () => { try { await navigator.clipboard.writeText(me.code); $('copy').textContent = 'Copied'; setTimeout(()=>$('copy').textContent='Copy',1500); } catch {} };
+$('test').onclick = () => { unlockAudio(); startAlarm(); $('oTitle').textContent='TEST ALERT'; $('oBody').textContent='This is how an alert sounds.'; $('overlay').classList.remove('hidden'); };
+$('leave').onclick = () => { if (confirm('Leave this group on this device?')) leave(); };
+
+if (me) enterGroup();
+</script>
+</body>
+</html>
